@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import axios from "axios";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
@@ -11,8 +11,9 @@ import { Progress } from "./components/ui/progress";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table";
-import { Sparkles, Trophy, Play, CheckCircle2, Lightbulb, Users } from "lucide-react";
+import { Sparkles, Trophy, Play, CheckCircle2, Lightbulb, Users, Award } from "lucide-react";
 import Editor from "@monaco-editor/react";
+import Confetti from "react-confetti";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -54,6 +55,7 @@ const Home = () => {
   const [code, setCode] = useState("");
   const [running, setRunning] = useState(false);
   const [runOut, setRunOut] = useState("");
+  const [stderr, setStderr] = useState("");
   const [passed, setPassed] = useState(false);
   const [points, setPoints] = useState(0);
   const [profile, setProfile] = useState({ total_points: 0, passed_levels: [] });
@@ -61,6 +63,9 @@ const Home = () => {
   const [hints, setHints] = useState([]);
   const [hintShown, setHintShown] = useState(0);
   const { w, h } = useWindowSize();
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const decorationsRef = useRef([]);
 
   useEffect(() => {
     async function load() {
@@ -90,9 +95,33 @@ const Home = () => {
     const lvl = levels.find(l => l.id === active);
     setHints(lvl?.hints || []);
     setHintShown(0);
+    setStderr("");
+    // clear decorations
+    if (editorRef.current && decorationsRef.current.length) {
+      decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, []);
+    }
   }, [active, levels]);
 
   const current = useMemo(() => levels.find(l => l.id === active) || {}, [levels, active]);
+
+  function highlightError(errorText) {
+    if (!errorText || !monacoRef.current || !editorRef.current) return;
+    const match = /line\s(\d+)/i.exec(errorText);
+    if (match) {
+      const line = parseInt(match[1], 10);
+      decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, [
+        {
+          range: new monacoRef.current.Range(line, 1, line, 1),
+          options: {
+            isWholeLine: true,
+            className: "bg-red-50",
+            linesDecorationsClassName: "error-line-decoration",
+            glyphMarginClassName: "error-glyph",
+          },
+        },
+      ]);
+    }
+  }
 
   async function runAndCheck() {
     if (!userId) {
@@ -101,15 +130,18 @@ const Home = () => {
     }
     setRunning(true);
     setRunOut("");
+    setStderr("");
     try {
-      const { data } = await axios.post(`${API}/execute_code`, { user_id: userId, level_id: active, code });
+      const { data } = await axios.post(`${API}/execute_code`, { user_id: userId, level_id: active, code, hints_used: hintShown });
       setRunOut(data.output || "");
       setPassed(data.passed);
       setPoints(data.points_earned);
+      if (data.error) setStderr(data.error);
       if (data.passed) {
         toast.success("Great job! Challenge passed");
-        // Fire lightweight confetti using canvas overlay
-        // Delay reset handled by state
+      } else if (data.error) {
+        toast("There's an error in your code. Check the highlighted line.");
+        highlightError(data.error);
       } else {
         toast("Keep trying! Read the hint again.");
       }
@@ -131,15 +163,41 @@ const Home = () => {
     return Array.from(topics);
   }, [profile, levels]);
 
+  const onEditorMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+    // kids-light theme
+    monaco.editor.defineTheme('kids-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [
+        { token: '', foreground: '1f2937', background: 'ffffff' },
+      ],
+      colors: {
+        'editor.background': '#ffffff',
+        'editorLineNumber.foreground': '#94a3b8',
+        'editor.lineHighlightBackground': '#f1f5f9',
+        'editor.selectionBackground': '#dbeafe',
+      }
+    });
+    editor.updateOptions({ fontSize: 17, minimap: { enabled: false }, wordWrap: 'on' });
+    monaco.editor.setTheme('kids-light');
+    // Hotkey: Run (Cmd/Ctrl + Enter)
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      runAndCheck();
+    });
+  };
+
   const MonacoEditor = (
     <div className="rounded-lg border overflow-hidden">
-      <Editor height="260px" defaultLanguage="python" value={code} onChange={(v)=>setCode(v || "")} theme="light" options={{ fontSize: 16, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on' }} />
+      <Editor height="260px" defaultLanguage="python" value={code} onChange={(v)=>setCode(v || "")} theme="kids-light" onMount={onEditorMount} options={{ fontSize: 17, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on' }} />
     </div>
   );
 
   return (
     <div className="min-h-screen bg-[rgb(245,247,252)]">
       <Toaster />
+      {passed && <Confetti width={w} height={h} numberOfPieces={180} gravity={0.25} recycle={false} />}
       {/* Header */}
       <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 border-b">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -154,6 +212,7 @@ const Home = () => {
             ))}
             <div className="hidden sm:flex items-center gap-2"><Trophy size={18}/> {profile.total_points} pts</div>
             <div className="hidden sm:flex items-center gap-2"><CheckCircle2 size={18}/> {profile.passed_levels?.length || 0}/10</div>
+            <Link to="/badges" className="text-slate-700 hover:underline flex items-center gap-2"><Award size={18}/> Badges</Link>
             <Link to="/dashboard" className="text-slate-700 hover:underline flex items-center gap-2"><Users size={18}/> Dashboard</Link>
           </div>
         </div>
@@ -168,7 +227,7 @@ const Home = () => {
             <CardContent>
               <div className="space-y-3">
                 {levels.map((lvl) => (
-                  <button key={lvl.id} onClick={() => { setActive(lvl.id); setCode(lvl.example_code); setRunOut(""); }}
+                  <button key={lvl.id} onClick={() => { setActive(lvl.id); setCode(lvl.example_code); setRunOut(""); setPassed(false); }}
                           className={`w-full text-left px-4 py-3 rounded-lg border hover:border-slate-400 transition-colors ${active===lvl.id?"bg-white border-slate-300":"bg-slate-50 border-transparent"}`}>
                     <div className="flex items-center justify-between">
                       <div>
@@ -208,13 +267,18 @@ const Home = () => {
                       <ul className="mt-2 list-disc list-inside text-slate-700">
                         {hints.slice(0, hintShown).map((h, i) => (<li key={i}>{h}</li>))}
                       </ul>
+                      {hintShown > 0 && (
+                        <div className="text-xs text-slate-500 mt-2">Using hints may reduce points for this attempt.</div>
+                      )}
                     </div>
                   </div>
                 </TabsContent>
                 <TabsContent value="try">
                   <div className="space-y-3">
                     {Editor ? (
-                      MonacoEditor
+                      <div className="rounded-lg border overflow-hidden">
+                        <Editor height="260px" defaultLanguage="python" value={code} onChange={(v)=>setCode(v || "")} theme="kids-light" onMount={onEditorMount} options={{ fontSize: 17, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on' }} />
+                      </div>
                     ) : (
                       <Textarea className="min-h-[220px] font-mono" value={code} onChange={(e)=>setCode(e.target.value)} placeholder="Type your Python code here..."/>
                     )}
@@ -226,7 +290,7 @@ const Home = () => {
                   </div>
                 </TabsContent>
                 <TabsContent value="output">
-                  <div className="bg-white border rounded-lg p-4 min-h-[140px] font-mono text-sm whitespace-pre-wrap">{runOut || "Your program output will appear here."}</div>
+                  <div className="bg-white border rounded-lg p-4 min-h-[140px] font-mono text-sm whitespace-pre-wrap">{stderr ? stderr : (runOut || "Your program output will appear here.")}</div>
                   {passed && (
                     <div className="mt-3 flex items-center gap-2 text-green-700"><CheckCircle2 size={18}/> You earned {points} points!</div>
                   )}
@@ -243,6 +307,63 @@ const Home = () => {
     </div>
   );
 };
+
+const Badges = () => {
+  const userId = useUserId();
+  const [levels, setLevels] = useState([]);
+  const [profile, setProfile] = useState({ total_points: 0, passed_levels: [] });
+
+  useEffect(() => {
+    async function load() {
+      const [lvls, prof] = await Promise.all([
+        axios.get(`${API}/levels`),
+        userId ? axios.get(`${API}/users/${userId}/progress`) : Promise.resolve({ data: { passed_levels: [] } }),
+      ]);
+      setLevels(lvls.data);
+      setProfile(prof.data);
+    }
+    load();
+  }, [userId]);
+
+  const topics = Array.from(new Set(levels.map(l => l.topic)));
+  const unlocked = new Set(
+    (profile.passed_levels || []).map(id => (levels.find(l => l.id === id) || {}).topic)
+  );
+
+  return (
+    <div className="min-h-screen bg-[rgb(245,247,252)]">
+      <Toaster />
+      <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 border-b">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div><Award size={24} className="text-indigo-700" /></div>
+            <h1 className="text-2xl font-[Montserrat] tracking-tight text-slate-900">Badge Cabinet</h1>
+          </div>
+          <Link to="/" className="text-slate-700 hover:underline">Back to App</Link>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {topics.map((t) => {
+          const isOn = unlocked.has(t);
+          return (
+            <Card key={t} className={`border ${isOn ? 'border-emerald-300' : 'border-slate-200 opacity-70'}`}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Badge className={isOn? 'bg-emerald-600' : ''}>{t}</Badge>
+                  {isOn ? 'Unlocked' : 'Locked'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-slate-600">Earn this badge by completing a level in the {t} track.</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </main>
+    </div>
+  );
+}
 
 const Dashboard = () => {
   const [users, setUsers] = useState([]);
@@ -324,6 +445,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/badges" element={<Badges />} />
           <Route path="/dashboard" element={<Dashboard />} />
         </Routes>
       </BrowserRouter>

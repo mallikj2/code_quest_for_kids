@@ -7,6 +7,7 @@ import uuid
 import os
 import re
 import asyncio
+import traceback
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 
@@ -64,6 +65,7 @@ class CodeRunRequest(BaseModel):
     user_id: str
     level_id: str
     code: str
+    hints_used: int = 0
 
 class CodeRunResponse(BaseModel):
     output: str
@@ -238,8 +240,9 @@ async def run_in_sandbox_fallback(code: str) -> Dict[str, str]:
         try:
             exec(code, safe_globals, safe_locals)
             return "\n".join(stdout_capture), ""
-        except Exception as e:
-            return "\n".join(stdout_capture), str(e)
+        except Exception:
+            tb = traceback.format_exc()
+            return "\n".join(stdout_capture), tb[:2000]
 
     try:
         return await asyncio.wait_for(_run(), timeout=3)
@@ -387,7 +390,14 @@ async def execute_code(req: CodeRunRequest):
 
     result = validate_output(level, stdout, stderr)
     passed = result["passed"]
-    pts = result["points"] if passed else 0
+
+    # Hints-based point decay: -20% per hint used, floor 0
+    if passed:
+        base_pts = level.points
+        decay_factor = max(0.0, 1.0 - 0.2 * max(0, int(req.hints_used)))
+        pts = max(0, int(round(base_pts * decay_factor)))
+    else:
+        pts = 0
 
     # persist progress
     prog = Progress(user_id=req.user_id, level_id=req.level_id, passed=passed, points_earned=pts, code=req.code)
