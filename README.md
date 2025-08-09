@@ -1,5 +1,4 @@
-# Here are your Instructions
-CodeQuest For Kids:
+# CodeQuest For Kids
 
 Here’s first working MVP of CodeQuest Kids – live and tested.
 
