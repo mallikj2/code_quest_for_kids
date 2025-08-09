@@ -151,7 +151,7 @@ const Home = () => {
               <CardTitle className="font-[Montserrat] text-slate-900">{current.title || ""}</CardTitle>
             </CardHeader>
             <CardContent>
-              <Tabs value="learn">
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList>
                   <TabsTrigger value="learn">Learn</TabsTrigger>
                   <TabsTrigger value="try">Try it</TabsTrigger>
