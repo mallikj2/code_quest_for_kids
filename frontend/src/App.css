@@ -11,7 +11,9 @@ code, .font-mono { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular,
 
 .prose p { line-height: 1.7; }
 
-/* Buttons and interactive states rely on Tailwind classes mostly */
-
 /* Avoid centering whole app to keep natural reading flow */
 .App { text-align: left; }
+
+/* Monaco decoration helpers */
+.error-line-decoration { border-left: 4px solid #ef4444; }
+.error-glyph { background-color: #ef4444; width: 4px; }

@@ -11,7 +11,11 @@ import { Progress } from "./components/ui/progress";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table";
-import { Sparkles, Trophy, Play, CheckCircle2, Lightbulb, Users, Award } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
+import { Switch } from "./components/ui/switch";
+import { Slider } from "./components/ui/slider";
+import { Sparkles, Trophy, Play, CheckCircle2, Lightbulb, Users, Award, Settings } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import Confetti from "react-confetti";
 
@@ -48,6 +52,10 @@ function useWindowSize() {
   return size;
 }
 
+const defaultSound = (localStorage.getItem('cq_sound') ?? 'true') === 'true';
+const defaultPieces = parseInt(localStorage.getItem('cq_confetti') || '180', 10);
+const defaultTheme = localStorage.getItem('cq_theme') || 'kids-light';
+
 const Home = () => {
   const userId = useUserId();
   const [levels, setLevels] = useState([]);
@@ -62,6 +70,11 @@ const Home = () => {
   const [activeTab, setActiveTab] = useState("learn");
   const [hints, setHints] = useState([]);
   const [hintShown, setHintShown] = useState(0);
+  const [runFailures, setRunFailures] = useState(0);
+  const [hintCooldownUntil, setHintCooldownUntil] = useState(0);
+  const [soundOn, setSoundOn] = useState(defaultSound);
+  const [confettiPieces, setConfettiPieces] = useState(defaultPieces);
+  const [editorTheme, setEditorTheme] = useState(defaultTheme);
   const { w, h } = useWindowSize();
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
@@ -96,7 +109,7 @@ const Home = () => {
     setHints(lvl?.hints || []);
     setHintShown(0);
     setStderr("");
-    // clear decorations
+    setRunFailures(0);
     if (editorRef.current && decorationsRef.current.length) {
       decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, []);
     }
@@ -123,6 +136,34 @@ const Home = () => {
     }
   }
 
+  function playCelebrateSound() {
+    if (!soundOn || typeof window === 'undefined') return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+      o.frequency.exponentialRampToValueAtTime(659.25, ctx.currentTime + 0.15); // E5
+      o.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.3); // G5
+      g.gain.setValueAtTime(0.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.5);
+    } catch (e) {
+      // ignore audio errors
+    }
+  }
+
+  const maxPointsThisTry = useMemo(() => {
+    const base = current.points || 0;
+    const decay = Math.max(0, 1 - 0.2 * hintShown);
+    return Math.max(0, Math.round(base * decay));
+  }, [current, hintShown]);
+
   async function runAndCheck() {
     if (!userId) {
       toast.error("Setting up your profile... try again in a sec");
@@ -138,12 +179,16 @@ const Home = () => {
       setPoints(data.points_earned);
       if (data.error) setStderr(data.error);
       if (data.passed) {
-        toast.success("Great job! Challenge passed");
+        playCelebrateSound();
+        toast.success(`Great job! You earned ${data.points_earned} points`);
+        setRunFailures(0);
       } else if (data.error) {
         toast("There's an error in your code. Check the highlighted line.");
         highlightError(data.error);
+        setRunFailures((n) => n + 1);
       } else {
         toast("Keep trying! Read the hint again.");
+        setRunFailures((n) => n + 1);
       }
     } catch (e) {
       toast.error("Run failed. Please try again.");
@@ -166,13 +211,11 @@ const Home = () => {
   const onEditorMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    // kids-light theme
+    // themes
     monaco.editor.defineTheme('kids-light', {
       base: 'vs',
       inherit: true,
-      rules: [
-        { token: '', foreground: '1f2937', background: 'ffffff' },
-      ],
+      rules: [],
       colors: {
         'editor.background': '#ffffff',
         'editorLineNumber.foreground': '#94a3b8',
@@ -180,24 +223,63 @@ const Home = () => {
         'editor.selectionBackground': '#dbeafe',
       }
     });
+    monaco.editor.defineTheme('midnight', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#0b1220',
+        'editor.lineHighlightBackground': '#111827',
+      }
+    });
     editor.updateOptions({ fontSize: 17, minimap: { enabled: false }, wordWrap: 'on' });
-    monaco.editor.setTheme('kids-light');
+    monaco.editor.setTheme(editorTheme === 'dyslexic' ? 'kids-light' : editorTheme);
+    // Dyslexic-friendly tweaks
+    if (editorTheme === 'dyslexic') {
+      editor.updateOptions({ fontFamily: 'Atkinson Hyperlegible, Source Code Pro, ui-monospace, monospace', letterSpacing: 0.5, lineHeight: 24 });
+    }
     // Hotkey: Run (Cmd/Ctrl + Enter)
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       runAndCheck();
     });
   };
 
-  const MonacoEditor = (
-    <div className="rounded-lg border overflow-hidden">
-      <Editor height="260px" defaultLanguage="python" value={code} onChange={(v)=>setCode(v || "")} theme="kids-light" onMount={onEditorMount} options={{ fontSize: 17, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on' }} />
-    </div>
-  );
+  useEffect(() => {
+    // persist settings
+    localStorage.setItem('cq_sound', String(soundOn));
+  }, [soundOn]);
+  useEffect(() => {
+    localStorage.setItem('cq_confetti', String(confettiPieces));
+  }, [confettiPieces]);
+  useEffect(() => {
+    localStorage.setItem('cq_theme', editorTheme);
+    if (monacoRef.current) {
+      monacoRef.current.editor.setTheme(editorTheme === 'dyslexic' ? 'kids-light' : editorTheme);
+      if (editorRef.current) {
+        if (editorTheme === 'dyslexic') {
+          editorRef.current.updateOptions({ fontFamily: 'Atkinson Hyperlegible, Source Code Pro, ui-monospace, monospace', letterSpacing: 0.5, lineHeight: 24 });
+        } else {
+          editorRef.current.updateOptions({ fontFamily: 'Source Code Pro, ui-monospace, monospace', letterSpacing: 0, lineHeight: 20 });
+        }
+      }
+    }
+  }, [editorTheme]);
+
+  const canShowHint = () => Date.now() >= hintCooldownUntil && hintShown < hints.length;
+  const revealHint = () => {
+    if (!canShowHint()) return;
+    setHintShown((n) => Math.min(n + 1, hints.length));
+    const cooldownMs = 8000; // 8s cooldown
+    setHintCooldownUntil(Date.now() + cooldownMs);
+  };
+
+  const needHintPrompt = runFailures >= 2 && hintShown < hints.length;
+  const cooldownRemainingSec = Math.max(0, Math.ceil((hintCooldownUntil - Date.now()) / 1000));
 
   return (
     <div className="min-h-screen bg-[rgb(245,247,252)]">
       <Toaster />
-      {passed && <Confetti width={w} height={h} numberOfPieces={180} gravity={0.25} recycle={false} />}
+      {passed && <Confetti width={w} height={h} numberOfPieces={confettiPieces} gravity={0.25} recycle={false} />}
       {/* Header */}
       <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 border-b">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -207,6 +289,35 @@ const Home = () => {
             <Badge className="ml-3 bg-slate-900 text-white">Python</Badge>
           </div>
           <div className="flex items-center gap-4 text-sm text-slate-600">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="secondary" className="flex items-center gap-2"><Settings size={16}/> Settings</Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm font-medium">Editor theme</div>
+                    <Select value={editorTheme} onValueChange={setEditorTheme}>
+                      <SelectTrigger className="mt-2"><SelectValue placeholder="Theme" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kids-light">Kids Light</SelectItem>
+                        <SelectItem value="midnight">Midnight</SelectItem>
+                        <SelectItem value="dyslexic">Dyslexia-friendly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">Sound on pass</div>
+                    <Switch checked={soundOn} onCheckedChange={setSoundOn} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium mb-2">Celebration intensity</div>
+                    <Slider defaultValue={[confettiPieces]} min={60} max={300} step={10} onValueChange={(v)=>setConfettiPieces(v[0])} />
+                    <div className="text-xs text-slate-500 mt-1">Pieces: {confettiPieces}</div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
             {topicBadges.map((t) => (
               <Badge key={t} className="bg-emerald-600">{t}</Badge>
             ))}
@@ -263,13 +374,23 @@ const Home = () => {
                     <div className="bg-slate-900 text-slate-50 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap">{current.example_code}</div>
                     <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">Challenge: {current.challenge}</div>
                     <div className="mt-3">
-                      <Button variant="secondary" onClick={() => setHintShown((n) => Math.min(n + 1, hints.length))}><Lightbulb className="mr-2" size={16}/>Show hint ({hintShown}/{hints.length})</Button>
+                      <div className="flex items-center gap-3">
+                        <Button variant="secondary" disabled={!canShowHint()} onClick={revealHint}><Lightbulb className="mr-2" size={16}/>Show hint ({hintShown}/{hints.length})</Button>
+                        {cooldownRemainingSec > 0 && (<span className="text-xs text-slate-500">Wait {cooldownRemainingSec}s</span>)}
+                      </div>
                       <ul className="mt-2 list-disc list-inside text-slate-700">
                         {hints.slice(0, hintShown).map((h, i) => (<li key={i}>{h}</li>))}
                       </ul>
                       {hintShown > 0 && (
-                        <div className="text-xs text-slate-500 mt-2">Using hints may reduce points for this attempt.</div>
+                        <div className="text-xs text-slate-500 mt-2">Using hints reduces points for this attempt.</div>
                       )}
+                      {needHintPrompt && (
+                        <div className="mt-3 bg-slate-50 border rounded p-3 text-sm">
+                          Stuck after a few tries? Would you like a hint?
+                          <Button className="ml-3" size="sm" variant="secondary" onClick={revealHint}>Reveal hint</Button>
+                        </div>
+                      )}
+                      <div className="text-sm text-slate-600 mt-3">Points this try: <span className="font-semibold">{maxPointsThisTry}</span></div>
                     </div>
                   </div>
                 </TabsContent>
@@ -277,14 +398,15 @@ const Home = () => {
                   <div className="space-y-3">
                     {Editor ? (
                       <div className="rounded-lg border overflow-hidden">
-                        <Editor height="260px" defaultLanguage="python" value={code} onChange={(v)=>setCode(v || "")} theme="kids-light" onMount={onEditorMount} options={{ fontSize: 17, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on' }} />
+                        <Editor height="260px" defaultLanguage="python" value={code} onChange={(v)=>setCode(v || "")} theme={editorTheme === 'dyslexic' ? 'kids-light' : editorTheme} onMount={onEditorMount} options={{ fontSize: 17, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on' }} />
                       </div>
                     ) : (
                       <Textarea className="min-h-[220px] font-mono" value={code} onChange={(e)=>setCode(e.target.value)} placeholder="Type your Python code here..."/>
                     )}
-                    <div className="flex gap-3">
+                    <div className="flex items-center gap-3">
                       <Button disabled={running} onClick={runAndCheck} className="bg-slate-900 text-white hover:bg-slate-800"><Play className="mr-2" size={16}/>Run &amp; Check</Button>
                       <Button variant="secondary" onClick={()=>setCode(current.example_code || "")}>Reset</Button>
+                      <div className="text-xs text-slate-500">Max points now: {maxPointsThisTry}</div>
                     </div>
                     <Progress value={passed?100: (runOut?40:0)} />
                   </div>
