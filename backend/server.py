@@ -270,7 +270,13 @@ async def create_user(payload: CreateUser):
 
 @api.get("/users/{user_id}/progress")
 async def get_user_progress(user_id: str):
-    items = await db.progress.find({"user_id": user_id}).to_list(1000)
+    raw = await db.progress.find({"user_id": user_id}).to_list(1000)
+    items = []
+    for it in raw:
+        it = dict(it)
+        if "_id" in it:
+            del it["_id"]
+        items.append(it)
     # aggregate
     total_points = sum(it.get("points_earned", 0) for it in items)
     passed_levels = list({it.get("level_id") for it in items if it.get("passed")})
