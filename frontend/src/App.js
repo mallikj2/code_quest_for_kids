@@ -9,7 +9,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { Textarea } from "./components/ui/textarea";
 import { Badge } from "./components/ui/badge";
 import { Progress } from "./components/ui/progress";
-import { Toaster, toast } from "./components/ui/sonner";
+import { Toaster } from "./components/ui/sonner";
+import { toast } from "sonner";
 import { Input } from "./components/ui/input";
 import { Sparkles, Trophy, Play, CheckCircle2 } from "lucide-react";
 
