@@ -196,16 +196,16 @@ class CodeQuestAPITester:
         print(f"🌐 Testing against: {self.api_url}")
         print("=" * 60)
         
-        # Run tests in sequence
+        # Run tests in sequence - create user first for dependent tests
         self.test_health_check()
         self.test_get_levels()
         self.test_get_level_hints()
         self.test_admin_users()
         self.test_admin_summary()
-        self.test_sandbox_fallback()
         self.test_create_user()
         self.test_execute_code()
         self.test_user_progress()
+        self.test_sandbox_fallback()
         
         # Print summary
         print("=" * 60)
