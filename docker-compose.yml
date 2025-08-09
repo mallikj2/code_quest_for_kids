@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  api:
+    build: ./backend
+    environment:
+      - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - SANDBOX_URL=http://sandbox:8080
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mongo
+      - sandbox
+  sandbox:
+    build: ./sandbox
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+  mongo:
+    image: mongo:6
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+volumes:
+  mongo_data:
