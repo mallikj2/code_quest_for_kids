@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import axios from "axios";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { motion } from "framer-motion";
+// animations kept subtle with CSS; no external motion lib to avoid extra deps
 import { Button } from "./components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "./components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
