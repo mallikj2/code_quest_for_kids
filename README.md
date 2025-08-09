@@ -66,7 +66,8 @@ Data isolation: UUID IDs, Mongo via env.
 CORS controlled via env; HTTPS is enforced by your environment; for local, see instructions below.
 Levels implemented (10)
 
-Variables, 2) Math, 3) Strings, 4) If/Else, 5) For-loops, 6) While, 7) Functions, 8) Lists, 9) Dicts, 10) Mini-Project. Each has:
+1) Variables, 2) Math, 3) Strings, 4) If/Else, 5) For-loops, 6) While, 7) Functions, 8) Lists, 9) Dicts, 10) Mini-Projec
+Each has:
 Short tutorial
 Example
 Challenge
@@ -142,5 +143,4 @@ Add Monaco Editor and a polished code panel now?
 Add confetti + badge cabinet and a progress map?
 Wire backend to real Docker sandbox (and add aiohttp in requirements) for parity with local compose?
 
-Agent is waiting...
 
