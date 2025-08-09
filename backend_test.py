@@ -39,25 +39,101 @@ class CodeQuestAPITester:
             return self.log_test("Health Check", False, f"Error: {str(e)}")
 
     def test_get_levels(self):
-        """Test 2: Get levels endpoint"""
+        """Test 2: Get levels endpoint - now includes hints array"""
         try:
             response = requests.get(f"{self.api_url}/levels", timeout=10)
             if response.status_code != 200:
                 return self.log_test("Get Levels", False, f"Status: {response.status_code}")
             
             levels = response.json()
+            level1 = levels[0] if levels else {}
+            has_hints = "hints" in level1 and isinstance(level1.get("hints"), list)
+            level1_has_hints = len(level1.get("hints", [])) >= 1
+            
             success = (len(levels) == 10 and 
-                      levels[0].get("title") == "Variables Explorer" and
-                      levels[0].get("id") == "1")
-            details = f"Count: {len(levels)}, First level: {levels[0].get('title', 'N/A')}"
-            return self.log_test("Get Levels", success, details)
+                      level1.get("title") == "Variables Explorer" and
+                      level1.get("id") == "1" and
+                      has_hints and level1_has_hints)
+            details = f"Count: {len(levels)}, Level 1 hints: {len(level1.get('hints', []))}"
+            return self.log_test("Get Levels (with hints)", success, details)
         except Exception as e:
-            return self.log_test("Get Levels", False, f"Error: {str(e)}")
+            return self.log_test("Get Levels (with hints)", False, f"Error: {str(e)}")
+
+    def test_get_level_hints(self):
+        """Test 3: Get level 1 hints endpoint"""
+        try:
+            response = requests.get(f"{self.api_url}/levels/1/hints", timeout=10)
+            if response.status_code != 200:
+                return self.log_test("Get Level 1 Hints", False, f"Status: {response.status_code}")
+            
+            data = response.json()
+            hints = data.get("hints", [])
+            success = (isinstance(hints, list) and len(hints) >= 1)
+            details = f"Hints count: {len(hints)}, First hint: '{hints[0][:50] if hints else 'None'}...'"
+            return self.log_test("Get Level 1 Hints", success, details)
+        except Exception as e:
+            return self.log_test("Get Level 1 Hints", False, f"Error: {str(e)}")
+
+    def test_admin_users(self):
+        """Test 4: Admin users endpoint"""
+        try:
+            response = requests.get(f"{self.api_url}/admin/users", timeout=10)
+            if response.status_code != 200:
+                return self.log_test("Admin Users", False, f"Status: {response.status_code}")
+            
+            users = response.json()
+            success = isinstance(users, list)
+            details = f"Users count: {len(users)}"
+            return self.log_test("Admin Users", success, details)
+        except Exception as e:
+            return self.log_test("Admin Users", False, f"Error: {str(e)}")
+
+    def test_admin_summary(self):
+        """Test 5: Admin summary endpoint"""
+        try:
+            response = requests.get(f"{self.api_url}/admin/summary", timeout=10)
+            if response.status_code != 200:
+                return self.log_test("Admin Summary", False, f"Status: {response.status_code}")
+            
+            summary = response.json()
+            has_leaderboard = "leaderboard" in summary and isinstance(summary.get("leaderboard"), list)
+            has_badges = "badges" in summary and isinstance(summary.get("badges"), dict)
+            has_totals = "total_users" in summary and "total_points" in summary
+            
+            success = has_leaderboard and has_badges and has_totals
+            details = f"Leaderboard: {len(summary.get('leaderboard', []))}, Total users: {summary.get('total_users', 0)}"
+            return self.log_test("Admin Summary", success, details)
+        except Exception as e:
+            return self.log_test("Admin Summary", False, f"Error: {str(e)}")
+
+    def test_sandbox_fallback(self):
+        """Test 6: Code execution fallback (aiohttp import check)"""
+        if not self.user_id:
+            return self.log_test("Sandbox Fallback", False, "No user ID available")
+        
+        try:
+            # Test that code execution still works (should use fallback since no SANDBOX_URL)
+            payload = {
+                "user_id": self.user_id,
+                "level_id": "2", 
+                "code": "print(7 + 8)"
+            }
+            response = requests.post(f"{self.api_url}/execute_code", json=payload, timeout=15)
+            if response.status_code != 200:
+                return self.log_test("Sandbox Fallback", False, f"Status: {response.status_code}")
+            
+            result = response.json()
+            success = (result.get("output", "").strip() == "15" and 
+                      result.get("passed") == True)
+            details = f"Output: '{result.get('output', '')}', Passed: {result.get('passed')}"
+            return self.log_test("Sandbox Fallback", success, details)
+        except Exception as e:
+            return self.log_test("Sandbox Fallback", False, f"Error: {str(e)}")
 
     def test_create_user(self):
-        """Test 3: Create user"""
+        """Test 7: Create user"""
         try:
-            payload = {"name": "Test"}
+            payload = {"name": "TestUser"}
             response = requests.post(f"{self.api_url}/users", json=payload, timeout=10)
             if response.status_code != 200:
                 return self.log_test("Create User", False, f"Status: {response.status_code}")
@@ -66,14 +142,14 @@ class CodeQuestAPITester:
             self.user_id = user_data.get("id")
             success = (self.user_id is not None and 
                       len(self.user_id) > 10 and  # UUID-like
-                      user_data.get("name") == "Test")
+                      user_data.get("name") == "TestUser")
             details = f"User ID: {self.user_id}, Name: {user_data.get('name')}"
             return self.log_test("Create User", success, details)
         except Exception as e:
             return self.log_test("Create User", False, f"Error: {str(e)}")
 
     def test_execute_code(self):
-        """Test 4: Execute code happy path"""
+        """Test 8: Execute code happy path"""
         if not self.user_id:
             return self.log_test("Execute Code", False, "No user ID available")
         
@@ -97,7 +173,7 @@ class CodeQuestAPITester:
             return self.log_test("Execute Code", False, f"Error: {str(e)}")
 
     def test_user_progress(self):
-        """Test 5: Get user progress"""
+        """Test 9: Get user progress"""
         if not self.user_id:
             return self.log_test("User Progress", False, "No user ID available")
         
@@ -120,12 +196,16 @@ class CodeQuestAPITester:
         print(f"🌐 Testing against: {self.api_url}")
         print("=" * 60)
         
-        # Run tests in sequence
+        # Run tests in sequence - create user first for dependent tests
         self.test_health_check()
         self.test_get_levels()
+        self.test_get_level_hints()
+        self.test_admin_users()
+        self.test_admin_summary()
         self.test_create_user()
         self.test_execute_code()
         self.test_user_progress()
+        self.test_sandbox_fallback()
         
         # Print summary
         print("=" * 60)
