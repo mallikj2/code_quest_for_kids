@@ -131,9 +131,9 @@ class CodeQuestAPITester:
             return self.log_test("Sandbox Fallback", False, f"Error: {str(e)}")
 
     def test_create_user(self):
-        """Test 3: Create user"""
+        """Test 7: Create user"""
         try:
-            payload = {"name": "Test"}
+            payload = {"name": "TestUser"}
             response = requests.post(f"{self.api_url}/users", json=payload, timeout=10)
             if response.status_code != 200:
                 return self.log_test("Create User", False, f"Status: {response.status_code}")
@@ -142,14 +142,14 @@ class CodeQuestAPITester:
             self.user_id = user_data.get("id")
             success = (self.user_id is not None and 
                       len(self.user_id) > 10 and  # UUID-like
-                      user_data.get("name") == "Test")
+                      user_data.get("name") == "TestUser")
             details = f"User ID: {self.user_id}, Name: {user_data.get('name')}"
             return self.log_test("Create User", success, details)
         except Exception as e:
             return self.log_test("Create User", False, f"Error: {str(e)}")
 
     def test_execute_code(self):
-        """Test 4: Execute code happy path"""
+        """Test 8: Execute code happy path"""
         if not self.user_id:
             return self.log_test("Execute Code", False, "No user ID available")
         
@@ -173,7 +173,7 @@ class CodeQuestAPITester:
             return self.log_test("Execute Code", False, f"Error: {str(e)}")
 
     def test_user_progress(self):
-        """Test 5: Get user progress"""
+        """Test 9: Get user progress"""
         if not self.user_id:
             return self.log_test("User Progress", False, "No user ID available")
         
