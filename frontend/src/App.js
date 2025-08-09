@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import axios from "axios";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-// animations kept subtle with CSS; no external motion lib to avoid extra deps
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { Button } from "./components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "./components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
@@ -11,8 +10,9 @@ import { Badge } from "./components/ui/badge";
 import { Progress } from "./components/ui/progress";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
-import { Input } from "./components/ui/input";
-import { Sparkles, Trophy, Play, CheckCircle2 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table";
+import { Sparkles, Trophy, Play, CheckCircle2, Lightbulb, Users } from "lucide-react";
+import Editor from "@monaco-editor/react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -37,6 +37,16 @@ function useUserId() {
   return userId;
 }
 
+function useWindowSize() {
+  const [size, set] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1024, h: typeof window !== 'undefined' ? window.innerHeight : 768 });
+  useEffect(() => {
+    function onResize() { set({ w: window.innerWidth, h: window.innerHeight }); }
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return size;
+}
+
 const Home = () => {
   const userId = useUserId();
   const [levels, setLevels] = useState([]);
@@ -48,6 +58,9 @@ const Home = () => {
   const [points, setPoints] = useState(0);
   const [profile, setProfile] = useState({ total_points: 0, passed_levels: [] });
   const [activeTab, setActiveTab] = useState("learn");
+  const [hints, setHints] = useState([]);
+  const [hintShown, setHintShown] = useState(0);
+  const { w, h } = useWindowSize();
 
   useEffect(() => {
     async function load() {
@@ -56,6 +69,7 @@ const Home = () => {
         setLevels(data);
         setActive(data[0]?.id || "1");
         setCode(data[0]?.example_code || "");
+        setHints(data[0]?.hints || []);
       } catch (e) {
         console.error(e);
       }
@@ -71,6 +85,12 @@ const Home = () => {
     }
     loadProgress();
   }, [userId, passed]);
+
+  useEffect(() => {
+    const lvl = levels.find(l => l.id === active);
+    setHints(lvl?.hints || []);
+    setHintShown(0);
+  }, [active, levels]);
 
   const current = useMemo(() => levels.find(l => l.id === active) || {}, [levels, active]);
 
@@ -88,6 +108,8 @@ const Home = () => {
       setPoints(data.points_earned);
       if (data.passed) {
         toast.success("Great job! Challenge passed");
+        // Fire lightweight confetti using canvas overlay
+        // Delay reset handled by state
       } else {
         toast("Keep trying! Read the hint again.");
       }
@@ -99,21 +121,40 @@ const Home = () => {
     }
   }
 
+  // Topics badges derived from passed levels
+  const topicBadges = useMemo(() => {
+    const passedSet = new Set(profile.passed_levels || []);
+    const topics = new Set();
+    for (const l of levels) {
+      if (passedSet.has(l.id)) topics.add(l.topic);
+    }
+    return Array.from(topics);
+  }, [profile, levels]);
+
+  const MonacoEditor = (
+    <div className="rounded-lg border overflow-hidden">
+      <Editor height="260px" defaultLanguage="python" value={code} onChange={(v)=>setCode(v || "")} theme="light" options={{ fontSize: 16, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on' }} />
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[rgb(245,247,252)]">
       <Toaster />
+      {/* Header */}
       <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 border-b">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div>
-              <Sparkles size={28} className="text-indigo-700" />
-            </div>
+            <div><Sparkles size={28} className="text-indigo-700" /></div>
             <h1 className="text-2xl font-[Montserrat] tracking-tight text-slate-900">CodeQuest Kids</h1>
             <Badge className="ml-3 bg-slate-900 text-white">Python</Badge>
           </div>
           <div className="flex items-center gap-4 text-sm text-slate-600">
+            {topicBadges.map((t) => (
+              <Badge key={t} className="bg-emerald-600">{t}</Badge>
+            ))}
             <div className="hidden sm:flex items-center gap-2"><Trophy size={18}/> {profile.total_points} pts</div>
             <div className="hidden sm:flex items-center gap-2"><CheckCircle2 size={18}/> {profile.passed_levels?.length || 0}/10</div>
+            <Link to="/dashboard" className="text-slate-700 hover:underline flex items-center gap-2"><Users size={18}/> Dashboard</Link>
           </div>
         </div>
       </header>
@@ -162,11 +203,21 @@ const Home = () => {
                     <p className="mb-3 text-slate-700">{current.tutorial}</p>
                     <div className="bg-slate-900 text-slate-50 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap">{current.example_code}</div>
                     <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">Challenge: {current.challenge}</div>
+                    <div className="mt-3">
+                      <Button variant="secondary" onClick={() => setHintShown((n) => Math.min(n + 1, hints.length))}><Lightbulb className="mr-2" size={16}/>Show hint ({hintShown}/{hints.length})</Button>
+                      <ul className="mt-2 list-disc list-inside text-slate-700">
+                        {hints.slice(0, hintShown).map((h, i) => (<li key={i}>{h}</li>))}
+                      </ul>
+                    </div>
                   </div>
                 </TabsContent>
                 <TabsContent value="try">
                   <div className="space-y-3">
-                    <Textarea className="min-h-[220px] font-mono" value={code} onChange={(e)=>setCode(e.target.value)} placeholder="Type your Python code here..."/>
+                    {Editor ? (
+                      MonacoEditor
+                    ) : (
+                      <Textarea className="min-h-[220px] font-mono" value={code} onChange={(e)=>setCode(e.target.value)} placeholder="Type your Python code here..."/>
+                    )}
                     <div className="flex gap-3">
                       <Button disabled={running} onClick={runAndCheck} className="bg-slate-900 text-white hover:bg-slate-800"><Play className="mr-2" size={16}/>Run &amp; Check</Button>
                       <Button variant="secondary" onClick={()=>setCode(current.example_code || "")}>Reset</Button>
@@ -193,12 +244,87 @@ const Home = () => {
   );
 };
 
+const Dashboard = () => {
+  const [users, setUsers] = useState([]);
+  const [summary, setSummary] = useState({ leaderboard: [], total_users: 0, total_points: 0, badges: {} });
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [u, s] = await Promise.all([
+          axios.get(`${API}/admin/users`),
+          axios.get(`${API}/admin/summary`),
+        ]);
+        setUsers(u.data);
+        setSummary(s.data);
+      } catch (e) {
+        toast.error("Failed to load dashboard");
+      }
+    }
+    load();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-[rgb(245,247,252)]">
+      <Toaster />
+      <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 border-b">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div><Users size={24} className="text-indigo-700" /></div>
+            <h1 className="text-2xl font-[Montserrat] tracking-tight text-slate-900">Class Dashboard</h1>
+          </div>
+          <Link to="/" className="text-slate-700 hover:underline">Back to App</Link>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card><CardHeader><CardTitle>Total Users</CardTitle></CardHeader><CardContent className="text-2xl">{summary.total_users}</CardContent></Card>
+          <Card><CardHeader><CardTitle>Total Points</CardTitle></CardHeader><CardContent className="text-2xl">{summary.total_points}</CardContent></Card>
+          <Card><CardHeader><CardTitle>Top Student</CardTitle></CardHeader><CardContent className="text-sm">{summary.leaderboard?.[0]?.name || '-'}</CardContent></Card>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle>Leaderboard</CardTitle></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Points</TableHead>
+                  <TableHead>Levels</TableHead>
+                  <TableHead>Badges</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {summary.leaderboard.map((row) => (
+                  <TableRow key={row.user_id}>
+                    <TableCell>{row.name}</TableCell>
+                    <TableCell>{row.points}</TableCell>
+                    <TableCell>{row.levels_passed}</TableCell>
+                    <TableCell>
+                      {(summary.badges?.[row.user_id] || []).map((b) => (
+                        <Badge key={b} className="mr-2 mb-1">{b}</Badge>
+                      ))}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}
+
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/dashboard" element={<Dashboard />} />
         </Routes>
       </BrowserRouter>
     </div>

@@ -58,6 +58,7 @@ class Level(BaseModel):
     challenge: str
     validator: Dict[str, Any]  # contains validation type and expected
     points: int
+    hints: List[str] = []
 
 class CodeRunRequest(BaseModel):
     user_id: str
@@ -82,6 +83,7 @@ LEVELS: List[Level] = [
         challenge="Create a variable called pet and set it to 'cat'. Then print it.",
         validator={"type": "stdout_contains", "text": "cat"},
         points=10,
+        hints=["Make a variable with = like: pet = 'cat'", "Use print(pet) to show it"]
     ),
     Level(
         id="2",
@@ -92,6 +94,7 @@ LEVELS: List[Level] = [
         challenge="Print the result of 7 + 8",
         validator={"type": "equals_stdout", "text": "15"},
         points=10,
+        hints=["7 + 8 makes 15", "Use print(7 + 8)"]
     ),
     Level(
         id="3",
@@ -102,76 +105,84 @@ LEVELS: List[Level] = [
         challenge="Print 'hello world' in all uppercase",
         validator={"type": "equals_stdout", "text": "HELLO WORLD"},
         points=10,
+        hints=["Text needs quotes: 'hello world'", "Make it uppercase: 'hello world'.upper()"]
     ),
     Level(
         id="4",
         title="If Detective",
-        topic="if/else",
+        topic="If/Else",
         tutorial="Make choices with if/else.",
         example_code="x = 10\nif x &gt; 5:\n    print('big')\nelse:\n    print('small')",
         challenge="If number is greater than 3, print 'yay'",
         validator={"type": "stdout_contains", "text": "yay"},
         points=10,
+        hints=["Use if number &gt; 3:", "Inside, print('yay')"]
     ),
     Level(
         id="5",
         title="Loop Land",
-        topic="for loops",
+        topic="For Loops",
         tutorial="Repeat with for loops.",
         example_code="for i in range(3):\n    print(i)",
         challenge="Print numbers 0,1,2 each on its own line",
         validator={"type": "equals_stdout_multi", "lines": ["0", "1", "2"]},
         points=10,
+        hints=["range(3) gives 0,1,2", "Use print(i) inside the loop"]
     ),
     Level(
         id="6",
         title="While Wheels",
-        topic="while loops",
+        topic="While Loops",
         tutorial="While repeats until a condition stops.",
         example_code="n = 0\nwhile n &lt; 3:\n    print(n)\n    n += 1",
         challenge="Use while to print 1,2,3",
         validator={"type": "equals_stdout_multi", "lines": ["1", "2", "3"]},
         points=10,
+        hints=["Start at n = 1", "While n &lt;= 3: print(n); n += 1"]
     ),
     Level(
         id="7",
         title="Function Factory",
-        topic="functions",
+        topic="Functions",
         tutorial="Functions are reusable blocks using def.",
         example_code="def add(a, b):\n    return a + b\nprint(add(2,3))",
         challenge="Write a function add2 that adds 2 to a number and print add2(5)",
         validator={"type": "equals_stdout", "text": "7"},
         points=10,
+        hints=["def add2(x): return x + 2", "print(add2(5))"]
     ),
     Level(
         id="8",
         title="List Lagoon",
-        topic="lists",
+        topic="Lists",
         tutorial="Lists hold many items.",
         example_code="nums = [1,2,3]\nprint(len(nums))",
         challenge="Make a list [3,4,5] and print its length",
         validator={"type": "equals_stdout", "text": "3"},
         points=10,
+        hints=["Use brackets: [3,4,5]", "len(list) gives how many"]
     ),
     Level(
         id="9",
         title="Dict Den",
-        topic="dicts",
+        topic="Dicts",
         tutorial="Dictionaries map keys to values.",
         example_code="dog = {'name':'Bo','age':5}\nprint(dog['name'])",
         challenge="Create a dict with key 'color' 'blue' and print color",
         validator={"type": "equals_stdout", "text": "blue"},
         points=10,
+        hints=["{'color': 'blue'}", "print(your_dict['color'])"]
     ),
     Level(
         id="10",
         title="Mini Project: Mascot Greeter",
-        topic="project",
+        topic="Project",
         tutorial="Combine variables, functions and prints.",
         example_code="def greet(name):\n    return 'Hello ' + name\nprint(greet('Coder'))",
         challenge="Write greet(name) and print Hello KidCoder",
         validator={"type": "equals_stdout", "text": "Hello KidCoder"},
         points=30,
+        hints=["def greet(name): return 'Hello ' + name", "print(greet('KidCoder'))"]
     ),
 ]
 
@@ -259,6 +270,13 @@ async def health():
 async def get_levels():
     return LEVELS
 
+@api.get("/levels/{level_id}/hints")
+async def get_level_hints(level_id: str):
+    level = next((l for l in LEVELS if l.id == level_id), None)
+    if not level:
+        raise HTTPException(status_code=404, detail="Level not found")
+    return {"hints": level.hints}
+
 class CreateUser(BaseModel):
     name: str
 
@@ -282,22 +300,80 @@ async def get_user_progress(user_id: str):
     passed_levels = list({it.get("level_id") for it in items if it.get("passed")})
     return {"items": items, "total_points": total_points, "passed_levels": passed_levels}
 
+# -------- Admin endpoints (read-only summaries) --------
+@api.get("/admin/users")
+async def admin_users():
+    users = await db.users.find().to_list(1000)
+    cleaned = []
+    for u in users:
+        u = dict(u)
+        u.pop('_id', None)
+        cleaned.append(u)
+    return cleaned
+
+@api.get("/admin/summary")
+async def admin_summary():
+    users = await db.users.find().to_list(1000)
+    progress = await db.progress.find().to_list(5000)
+    # clean ids
+    def _clean(d):
+        d = dict(d)
+        d.pop('_id', None)
+        return d
+    users = [_clean(u) for u in users]
+    progress = [_clean(p) for p in progress]
+
+    # points per user
+    pts: Dict[str, int] = {}
+    passed_by_user: Dict[str, set] = {}
+    for p in progress:
+        uid = p['user_id']
+        pts[uid] = pts.get(uid, 0) + int(p.get('points_earned', 0))
+        if p.get('passed'):
+            passed_by_user.setdefault(uid, set()).add(p['level_id'])
+
+    # leaderboard
+    leaderboard = []
+    for u in users:
+        uid = u['id']
+        leaderboard.append({
+            'user_id': uid,
+            'name': u.get('name', 'Unknown'),
+            'points': pts.get(uid, 0),
+            'levels_passed': len(passed_by_user.get(uid, set()))
+        })
+    leaderboard.sort(key=lambda x: x['points'], reverse=True)
+
+    # topic badges by user
+    level_map = {l.id: l for l in LEVELS}
+    badges: Dict[str, List[str]] = {}  # user_id -> topics list
+    for uid, level_ids in passed_by_user.items():
+        topics = sorted({level_map[lid].topic for lid in level_ids if lid in level_map})
+        badges[uid] = topics
+
+    return {
+        'total_users': len(users),
+        'total_points': sum(pts.values()),
+        'leaderboard': leaderboard[:20],
+        'badges': badges,
+    }
+
 @api.post("/execute_code", response_model=CodeRunResponse)
 async def execute_code(req: CodeRunRequest):
     # choose sandbox microservice via env, else fallback
-    use_fallback = os.environ.get('SANDBOX_URL') is None
+    sandbox_url = os.environ.get('SANDBOX_URL')
 
     stdout = ""
     stderr = ""
 
-    if use_fallback:
+    if not sandbox_url:
         stdout, stderr = await run_in_sandbox_fallback(req.code)
     else:
         # Call external sandbox service via HTTP
-        import aiohttp
         try:
+            import aiohttp
             async with aiohttp.ClientSession() as session:
-                async with session.post(os.environ['SANDBOX_URL'] + '/run', json={"code": req.code}) as resp:
+                async with session.post(sandbox_url + '/run', json={"code": req.code}) as resp:
                     data = await resp.json()
                     stdout = data.get('stdout', '')
                     stderr = data.get('stderr', '')
