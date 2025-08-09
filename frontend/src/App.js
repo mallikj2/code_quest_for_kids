@@ -104,9 +104,9 @@ const Home = () => {
       <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 border-b">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <motion.div initial={{ scale: 0.8, rotate: -8 }} animate={{ scale: 1, rotate: 0 }}>
+            <div>
               <Sparkles size={28} className="text-indigo-700" />
-            </motion.div>
+            </div>
             <h1 className="text-2xl font-[Montserrat] tracking-tight text-slate-900">CodeQuest Kids</h1>
             <Badge className="ml-3 bg-slate-900 text-white">Python</Badge>
           </div>
