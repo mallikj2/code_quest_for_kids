@@ -1,34 +1,17 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Modern playful styling for CodeQuest Kids */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&family=Source+Code+Pro:wght@400;600&display=swap');
+
+:root {
+  --ink: #0f172a; /* slate-900 */
+  --paper: #f5f7fc;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
-}
+body { font-family: Montserrat, ui-sans-serif, system-ui; }
+code, .font-mono { font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
-}
+.prose p { line-height: 1.7; }
 
-.App-link {
-    color: #61dafb;
-}
+/* Buttons and interactive states rely on Tailwind classes mostly */
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
+/* Avoid centering whole app to keep natural reading flow */
+.App { text-align: left; }
