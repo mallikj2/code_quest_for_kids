@@ -47,6 +47,7 @@ const Home = () => {
   const [passed, setPassed] = useState(false);
   const [points, setPoints] = useState(0);
   const [profile, setProfile] = useState({ total_points: 0, passed_levels: [] });
+  const [activeTab, setActiveTab] = useState("learn");
 
   useEffect(() => {
     async function load() {
